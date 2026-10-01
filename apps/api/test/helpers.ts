@@ -4,7 +4,10 @@ import type { SnapshotScope } from '../src/domain/snapshot-cancellation';
 import { FixedClock } from '../src/infrastructure/clock';
 import { PrismaService } from '../src/infrastructure/prisma/prisma.service';
 import type { FetchResult, ReservationSourceAdapter } from '../src/integrations/reservation-source-adapter';
+import type { AppConfig } from '../src/config/app-config';
 import { AuditService } from '../src/modules/audit/audit.service';
+import { CalendarExportService } from '../src/modules/calendar-export/calendar-export.service';
+import { DashboardService } from '../src/modules/dashboard/dashboard.service';
 import { MappingsService } from '../src/modules/mappings/mappings.service';
 import { ConflictsService } from '../src/modules/reservations/conflicts.service';
 import { ReservationsService } from '../src/modules/reservations/reservations.service';
@@ -25,7 +28,9 @@ export function makeContext() {
   const conflicts = new ConflictsService(prisma);
   const reservations = new ReservationsService(prisma, audit, conflicts, clock);
   const mappings = new MappingsService(prisma, audit);
-  return { prisma, audit, clock, sync, conflicts, reservations, mappings };
+  const dashboard = new DashboardService(prisma, conflicts, clock);
+  const exports = new CalendarExportService(prisma, audit, clock, { publicBaseUrl: 'https://calendars.example.test' } as AppConfig);
+  return { prisma, audit, clock, sync, conflicts, reservations, mappings, dashboard, exports };
 }
 
 export type Ctx = ReturnType<typeof makeContext>;

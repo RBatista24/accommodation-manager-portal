@@ -3,6 +3,8 @@ import type { IsoDate } from './dates';
 
 export type ReservationSource = 'BOOKING' | 'AIRBNB' | 'DIRECT' | 'OTHER';
 export type ReservationStatus = 'CONFIRMED' | 'CANCELLED';
+/** STAY = a guest stays; BLOCK = blocked dates (owner use, maintenance, a Booking closure). */
+export type ReservationKind = 'STAY' | 'BLOCK';
 export type SyncStatus = 'RUNNING' | 'SUCCESS' | 'PARTIAL' | 'FAILED';
 
 export interface Unit {
@@ -52,6 +54,7 @@ export interface Reservation {
   nights: number;
   numberOfGuests: number | null;
   status: ReservationStatus;
+  kind: ReservationKind;
   notes: string | null;
   /** Empty means the guest is billed (guestName). */
   billingName: string | null;
@@ -73,7 +76,7 @@ export interface Conflict {
   propertyId: string;
   overlapFrom: IsoDate;
   overlapTo: IsoDate;
-  reservations: { id: string; guestName: string | null; checkIn: IsoDate; checkOut: IsoDate; source: ReservationSource; externalId: string | null }[];
+  reservations: { id: string; guestName: string | null; checkIn: IsoDate; checkOut: IsoDate; source: ReservationSource; kind?: ReservationKind; externalId: string | null }[];
 }
 
 export interface ReservationDetail extends Reservation {
@@ -185,12 +188,25 @@ export interface Dashboard {
   occupancy: {
     totalUnits: number;
     occupiedUnits: number;
+    /** Units closed tonight by blocked dates (not counting occupied ones). */
+    blockedUnits?: number;
     availableUnits: number;
-    units: { id: string; name: string; propertyId: string; propertyName: string; occupied: boolean; currentReservationId: string | null }[];
+    units: { id: string; name: string; propertyId: string; propertyName: string; occupied: boolean; blocked?: boolean; currentReservationId: string | null }[];
   };
   upcoming: Reservation[];
   pendingAssignment: Reservation[];
   conflicts: Conflict[];
   syncs: { source: ReservationSource; lastSync: SyncRun | null }[];
   attention: AttentionItem[];
+}
+
+/** The outgoing calendar link of one unit, for Booking.com to import. */
+export interface CalendarExport {
+  unitId: string;
+  unitName: string;
+  propertyId: string;
+  propertyName: string;
+  enabled: boolean;
+  url: string | null;
+  createdAt: string | null;
 }

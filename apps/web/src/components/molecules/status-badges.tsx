@@ -2,10 +2,15 @@ import { Badge } from '@/components/atoms/badge';
 import type { Reservation, ReservationSource, SyncStatus } from '@/lib/types';
 
 /** The single most important state of a reservation, as the operator sees it. */
-export function ReservationStatusBadge({ reservation }: { reservation: Pick<Reservation, 'status' | 'pendingAssignment' | 'hasConflict'> }) {
+export function ReservationStatusBadge({
+  reservation,
+}: {
+  reservation: Pick<Reservation, 'status' | 'pendingAssignment' | 'hasConflict'> & { kind?: Reservation['kind'] };
+}) {
   if (reservation.status === 'CANCELLED') return <Badge variant="secondary">Cancelled</Badge>;
   if (reservation.pendingAssignment) return <Badge variant="warning">Pending unit</Badge>;
   if (reservation.hasConflict) return <Badge variant="destructive">Conflict</Badge>;
+  if (reservation.kind === 'BLOCK') return <Badge variant="outline">Blocked</Badge>;
   return <Badge variant="success">Confirmed</Badge>;
 }
 

@@ -23,6 +23,7 @@ import {
   todayLocal,
   type IsoDate,
 } from '@/lib/dates';
+import { reservationShortTitle } from '@/lib/reservations';
 import { cn } from '@/lib/utils';
 
 type View = 'day' | 'week' | 'month';
@@ -120,7 +121,7 @@ export function CalendarPage() {
                           <React.Fragment key={r.id}>
                             {i > 0 && ' and '}
                             <button type="button" className="underline underline-offset-2" onClick={() => open(r.id)}>
-                              {r.guestName ?? 'Guest'} ({formatStay(r.checkIn, r.checkOut)})
+                              {reservationShortTitle(r)} ({formatStay(r.checkIn, r.checkOut)})
                             </button>
                           </React.Fragment>
                         ))}
@@ -141,6 +142,7 @@ function Legend() {
   const items = [
     ['Confirmed', 'bg-info border-info'],
     ['Conflict', 'bg-destructive border-destructive'],
+    ['Blocked', 'bg-muted border-foreground/25'],
     ['Unit pending', 'bg-warning-soft border-warning border-dashed'],
     ['Cancelled', 'bg-muted border-muted-foreground/40 border-dashed'],
   ] as const;

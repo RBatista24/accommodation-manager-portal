@@ -37,6 +37,32 @@ export function ReservationEditForm({ reservation: r, onDone }: { reservation: R
     );
   };
 
+  if (r.kind === 'BLOCK') {
+    // Blocked dates have no guest or billing: only the reason.
+    return (
+      <form
+        className="grid gap-4"
+        onSubmit={(e) => {
+          e.preventDefault();
+          edit.mutate({ notes }, { onSuccess: onDone });
+        }}
+      >
+        <FormField id="res-notes" label="Reason">
+          <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} maxLength={4000} placeholder="e.g. painting, family visit" />
+        </FormField>
+        {edit.isError && <p className="text-destructive text-sm">{errorMessage(edit.error)}</p>}
+        <div className="flex justify-end gap-2">
+          <Button type="button" variant="outline" onClick={onDone} disabled={edit.isPending}>
+            Cancel
+          </Button>
+          <Button type="submit" disabled={edit.isPending}>
+            {edit.isPending && <Spinner />} Save
+          </Button>
+        </div>
+      </form>
+    );
+  }
+
   return (
     <form onSubmit={submit} className="grid gap-4">
       <FormField id="res-name" label="Guest name">

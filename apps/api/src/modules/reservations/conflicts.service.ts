@@ -48,6 +48,7 @@ export class ConflictsService {
         checkIn: toIsoDate(r!.checkIn),
         checkOut: toIsoDate(r!.checkOut),
         source: r!.source,
+        kind: r!.kind,
         externalId: r!.externalId,
       });
       return {

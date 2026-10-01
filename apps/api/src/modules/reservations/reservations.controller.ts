@@ -2,8 +2,10 @@ import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Que
 import { Transform, Type } from 'class-transformer';
 import { IsBoolean, IsEmail, IsIn, IsInt, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min, ValidateIf } from 'class-validator';
 import {
+  RESERVATION_KINDS,
   RESERVATION_SOURCES,
   RESERVATION_STATUSES,
+  type ReservationKind,
   type ReservationSource,
   type ReservationStatus,
 } from '../../domain/reservation';
@@ -19,6 +21,7 @@ class ListReservationsQuery {
   @IsOptional() @IsUUID() unitId?: string;
   @IsOptional() @IsIn(RESERVATION_SOURCES) source?: ReservationSource;
   @IsOptional() @IsIn(RESERVATION_STATUSES) status?: ReservationStatus;
+  @IsOptional() @IsIn(RESERVATION_KINDS) kind?: ReservationKind;
   @IsOptional() @Matches(ISO_DATE, { message: 'from must be YYYY-MM-DD' }) from?: string;
   @IsOptional() @Matches(ISO_DATE, { message: 'to must be YYYY-MM-DD' }) to?: string;
   @IsOptional() @IsString() @MaxLength(100) q?: string;
@@ -58,7 +61,9 @@ class CreateReservationDto {
   @IsUUID() unitId: string;
   @Matches(ISO_DATE, { message: 'checkIn must be YYYY-MM-DD' }) checkIn: string;
   @Matches(ISO_DATE, { message: 'checkOut must be YYYY-MM-DD' }) checkOut: string;
-  @IsString() @MaxLength(200) guestName: string;
+  @IsOptional() @IsIn(RESERVATION_KINDS) kind?: ReservationKind;
+  // Required for a guest stay (checked by the service); not used for blocked dates.
+  @IsOptional() @ValidateIf((_o, v) => v !== null) @IsString() @MaxLength(200) guestName?: string | null;
   @IsOptional() @ValidateIf((_o, v) => v !== null && v !== '') @IsEmail() @MaxLength(200) guestEmail?: string | null;
   @IsOptional() @ValidateIf((_o, v) => v !== null) @IsString() @MaxLength(50) guestPhone?: string | null;
   @IsOptional() @ValidateIf((_o, v) => v !== null) @Type(() => Number) @IsInt() @Min(1) @Max(100) numberOfGuests?: number | null;
@@ -67,6 +72,10 @@ class CreateReservationDto {
   @IsOptional() @ValidateIf((_o, v) => v !== null && v !== '') @IsString() @Matches(/^[A-Za-z0-9\s./-]{4,40}$/, { message: 'Enter a valid NIF or VAT number (letters and digits only)' }) billingNif?: string | null;
   @IsOptional() @ValidateIf((_o, v) => v !== null) @IsString() @MaxLength(500) billingAddress?: string | null;
   @IsOptional() @IsBoolean() acceptConflicts?: boolean;
+}
+
+class SetKindDto {
+  @IsIn(RESERVATION_KINDS) kind: ReservationKind;
 }
 
 class AssignUnitDto {
@@ -96,6 +105,13 @@ export class ReservationsController {
   @Post('reservations')
   async create(@Body() dto: CreateReservationDto) {
     return this.reservations.create(dto, await this.currentUser.id());
+  }
+
+  /** Mark as blocked dates or as a guest stay (any source; sync never changes it). */
+  @Post('reservations/:id/kind')
+  @HttpCode(200)
+  async setKind(@Param('id', ParseUUIDPipe) id: string, @Body() dto: SetKindDto) {
+    return this.reservations.setKind(id, dto.kind, await this.currentUser.id());
   }
 
   /** Cancel a reservation created in the app (never deleted). */

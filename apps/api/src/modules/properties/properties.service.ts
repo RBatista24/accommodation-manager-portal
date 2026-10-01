@@ -43,8 +43,8 @@ export class PropertiesService {
     const today = fromIsoDate(this.clock.today());
     const confirmed = { propertyId: id, status: 'CONFIRMED' as const };
     const [upcoming, inHouse, pendingAssignment, total, cancelled] = await Promise.all([
-      this.prisma.reservation.count({ where: { ...confirmed, checkIn: { gt: today } } }),
-      this.prisma.reservation.count({ where: { ...confirmed, checkIn: { lte: today }, checkOut: { gt: today } } }),
+      this.prisma.reservation.count({ where: { ...confirmed, kind: 'STAY', checkIn: { gt: today } } }),
+      this.prisma.reservation.count({ where: { ...confirmed, kind: 'STAY', checkIn: { lte: today }, checkOut: { gt: today } } }),
       this.prisma.reservation.count({ where: { ...confirmed, unitId: null, checkOut: { gt: today } } }),
       this.prisma.reservation.count({ where: { propertyId: id } }),
       this.prisma.reservation.count({ where: { propertyId: id, status: 'CANCELLED' } }),

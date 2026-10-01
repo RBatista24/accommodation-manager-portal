@@ -30,21 +30,28 @@ export class DashboardService {
       property: { active: true },
       ...(propertyId ? { propertyId } : {}),
     };
+    // Guest lists (arrivals, departures, in house, upcoming) only show guest stays;
+    // blocked dates make a unit unavailable without being a guest.
+    const stays: Prisma.ReservationWhereInput = { ...scope, kind: 'STAY' };
     const include = {
       property: { select: { id: true, name: true } },
       unit: { select: { id: true, name: true } },
     } satisfies Prisma.ReservationInclude;
 
-    const [checkIns, checkOuts, inHouse, upcoming, unassigned, units, conflicts, lastRuns] = await Promise.all([
-      this.prisma.reservation.findMany({ where: { ...scope, checkIn: todayDate }, include, orderBy: { guestName: 'asc' } }),
-      this.prisma.reservation.findMany({ where: { ...scope, checkOut: todayDate }, include, orderBy: { guestName: 'asc' } }),
+    const [checkIns, checkOuts, inHouse, blockedNow, upcoming, unassigned, units, conflicts, lastRuns] = await Promise.all([
+      this.prisma.reservation.findMany({ where: { ...stays, checkIn: todayDate }, include, orderBy: { guestName: 'asc' } }),
+      this.prisma.reservation.findMany({ where: { ...stays, checkOut: todayDate }, include, orderBy: { guestName: 'asc' } }),
       this.prisma.reservation.findMany({
-        where: { ...scope, checkIn: { lte: todayDate }, checkOut: { gt: todayDate } },
+        where: { ...stays, checkIn: { lte: todayDate }, checkOut: { gt: todayDate } },
         include,
         orderBy: { checkOut: 'asc' },
       }),
       this.prisma.reservation.findMany({
-        where: { ...scope, checkIn: { gt: todayDate, lte: fromIsoDate(addDays(today, UPCOMING_DAYS)) } },
+        where: { ...scope, kind: 'BLOCK', checkIn: { lte: todayDate }, checkOut: { gt: todayDate } },
+        select: { id: true, unitId: true },
+      }),
+      this.prisma.reservation.findMany({
+        where: { ...stays, checkIn: { gt: todayDate, lte: fromIsoDate(addDays(today, UPCOMING_DAYS)) } },
         include,
         orderBy: { checkIn: 'asc' },
         take: 20,
@@ -68,6 +75,8 @@ export class DashboardService {
     ]);
 
     const occupiedUnitIds = new Set(inHouse.map((r) => r.unitId).filter(Boolean));
+    // A unit with a guest counts as occupied even if it is also blocked.
+    const blockedUnitIds = new Set(blockedNow.map((r) => r.unitId).filter((id) => id && !occupiedUnitIds.has(id)));
     const syncs = ENABLED_SOURCES.map((source, i) => ({
       source,
       lastSync: lastRuns[i] ? presentSyncRun(lastRuns[i]!) : null,
@@ -114,13 +123,15 @@ export class DashboardService {
       occupancy: {
         totalUnits: units.length,
         occupiedUnits: units.filter((u) => occupiedUnitIds.has(u.id)).length,
-        availableUnits: units.filter((u) => !occupiedUnitIds.has(u.id)).length,
+        blockedUnits: units.filter((u) => blockedUnitIds.has(u.id)).length,
+        availableUnits: units.filter((u) => !occupiedUnitIds.has(u.id) && !blockedUnitIds.has(u.id)).length,
         units: units.map((u) => ({
           id: u.id,
           name: u.name,
           propertyId: u.propertyId,
           propertyName: u.property.name,
           occupied: occupiedUnitIds.has(u.id),
+          blocked: blockedUnitIds.has(u.id),
           currentReservationId: inHouse.find((r) => r.unitId === u.id)?.id ?? null,
         })),
       },

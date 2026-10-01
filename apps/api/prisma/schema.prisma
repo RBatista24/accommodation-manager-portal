@@ -26,6 +26,13 @@ enum ReservationStatus {
   CANCELLED
 }
 
+/// STAY = a guest stays; BLOCK = the unit is closed (owner use, maintenance, a
+/// closure imported from Booking). Set by people only; sync never changes it.
+enum ReservationKind {
+  STAY
+  BLOCK
+}
+
 enum SyncStatus {
   RUNNING
   SUCCESS
@@ -67,6 +74,10 @@ model Unit {
   name        String
   description String?
   active      Boolean  @default(true)
+  // Secret token of this unit's outgoing iCal link (for Booking to import).
+  // NULL = no link. Rotating it invalidates the old link.
+  exportToken          String?   @unique @map("export_token")
+  exportTokenCreatedAt DateTime? @map("export_token_created_at")
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
@@ -107,6 +118,7 @@ model Reservation {
   checkOut       DateTime          @map("check_out") @db.Date
   numberOfGuests Int?              @map("number_of_guests")
   status         ReservationStatus @default(CONFIRMED)
+  kind           ReservationKind   @default(STAY)
   notes          String?
 
   // Billing details, filled in by hand (no source provides them).

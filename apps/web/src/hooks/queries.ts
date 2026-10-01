@@ -68,6 +68,22 @@ export function useCreateReservation() {
   return useMutation({ mutationFn: (body: NewReservation) => api.createReservation(body), onSuccess: invalidate });
 }
 
+export function useSetReservationKind(reservationId: string) {
+  const invalidate = useInvalidateAll();
+  return useMutation({ mutationFn: (kind: 'STAY' | 'BLOCK') => api.setReservationKind(reservationId, kind), onSuccess: invalidate });
+}
+
+export const useCalendarExports = () => useQuery({ queryKey: ['calendar-exports'], queryFn: () => api.calendarExports() });
+
+export function useToggleCalendarExport() {
+  const invalidate = useInvalidateAll();
+  return useMutation({
+    mutationFn: (v: { unitId: string; enable: boolean }) =>
+      v.enable ? api.enableCalendarExport(v.unitId) : api.disableCalendarExport(v.unitId),
+    onSuccess: invalidate,
+  });
+}
+
 export function useCancelReservation(reservationId: string) {
   const invalidate = useInvalidateAll();
   return useMutation({ mutationFn: () => api.cancelReservation(reservationId), onSuccess: invalidate });

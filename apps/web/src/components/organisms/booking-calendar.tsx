@@ -5,6 +5,7 @@ import { ReservationStatusBadge } from '@/components/molecules/status-badges';
 import { useReservationParam } from '@/hooks/use-reservation-param';
 import { daysBetween, formatShort, formatStay, formatWeekday, nightsLabel, type IsoDate } from '@/lib/dates';
 import type { CalendarData, Reservation } from '@/lib/types';
+import { reservationShortTitle, reservationTitle } from '@/lib/reservations';
 import { cn } from '@/lib/utils';
 
 const LANE_HEIGHT = 34;
@@ -131,7 +132,7 @@ export function BookingCalendar({ data, days, today }: { data: CalendarData; day
                     >
                       <div className="min-w-0">
                         <div className={cn('truncate text-sm font-medium', r.status === 'CANCELLED' && 'text-muted-foreground line-through')}>
-                          {r.guestName ?? 'Guest name unavailable'}
+                          {reservationTitle(r)}
                         </div>
                         <div className="text-muted-foreground text-xs">
                           {formatStay(r.checkIn, r.checkOut)} · {nightsLabel(r.nights)}
@@ -152,11 +153,28 @@ export function BookingCalendar({ data, days, today }: { data: CalendarData; day
 
 function CalendarBar({ bar, n, onOpen }: { bar: Bar; n: number; onOpen: (id: string) => void }) {
   const r = bar.reservation;
-  const kind = r.status === 'CANCELLED' ? 'cancelled' : r.pendingAssignment ? 'unassigned' : r.hasConflict ? 'conflict' : 'ok';
+  const kind =
+    r.status === 'CANCELLED'
+      ? 'cancelled'
+      : r.pendingAssignment
+        ? 'unassigned'
+        : r.hasConflict
+          ? 'conflict'
+          : r.kind === 'BLOCK'
+            ? 'block'
+            : 'ok';
   const title = [
-    r.guestName ?? 'Guest name unavailable',
+    reservationTitle(r) + (r.kind === 'BLOCK' && r.notes ? ` — ${r.notes}` : ''),
     `${formatShort(r.checkIn)} → ${formatShort(r.checkOut)} (${nightsLabel(r.nights)})`,
-    kind === 'cancelled' ? 'Cancelled' : kind === 'unassigned' ? 'Unit pending assignment' : kind === 'conflict' ? 'Conflict' : 'Confirmed',
+    kind === 'cancelled'
+      ? 'Cancelled'
+      : kind === 'unassigned'
+        ? 'Unit pending assignment'
+        : kind === 'conflict'
+          ? 'Conflict'
+          : kind === 'block'
+            ? 'Blocked'
+            : 'Confirmed',
   ].join('\n');
 
   return (
@@ -169,6 +187,8 @@ function CalendarBar({ bar, n, onOpen }: { bar: Bar; n: number; onOpen: (id: str
         kind === 'ok' && 'bg-info border-info text-white',
         kind === 'conflict' && 'bg-destructive border-destructive ring-destructive/25 text-white ring-2',
         kind === 'unassigned' && 'bg-warning-soft border-warning text-warning border-dashed',
+        // Blocked dates: neutral and hatched, clearly not a guest.
+        kind === 'block' && 'bg-muted border-foreground/25 text-foreground',
         kind === 'cancelled' && 'bg-muted text-muted-foreground border-muted-foreground/40 border-dashed line-through',
         bar.clippedStart && 'rounded-l-none',
         bar.clippedEnd && 'rounded-r-none',
@@ -178,10 +198,13 @@ function CalendarBar({ bar, n, onOpen }: { bar: Bar; n: number; onOpen: (id: str
         width: `calc(${((bar.end - bar.start) / n) * 100}% - 4px)`,
         top: ROW_PADDING + bar.lane * LANE_HEIGHT,
         height: LANE_HEIGHT - 6,
+        ...(kind === 'block'
+          ? { backgroundImage: 'repeating-linear-gradient(135deg, transparent 0 6px, color-mix(in oklab, currentColor 12%, transparent) 6px 8px)' }
+          : {}),
       }}
     >
       {kind === 'conflict' && <TriangleAlertIcon className="size-3.5 shrink-0" />}
-      <span className="truncate">{r.guestName ?? 'Guest'}</span>
+      <span className="truncate">{reservationShortTitle(r)}</span>
     </button>
   );
 }

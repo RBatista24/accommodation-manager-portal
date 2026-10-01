@@ -26,6 +26,7 @@ export function presentReservation(r: ReservationWithNames, conflictIds?: Readon
     nights: nightsBetween(checkIn, checkOut),
     numberOfGuests: r.numberOfGuests,
     status: r.status,
+    kind: r.kind,
     notes: r.notes,
     billingName: r.billingName,
     billingNif: r.billingNif,
