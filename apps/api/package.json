@@ -1,0 +1,45 @@
+{
+  "name": "@accommodation-manager-portal/api",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "postinstall": "prisma generate",
+    "dev": "nest start --watch",
+    "build": "nest build",
+    "start": "node dist/main.js",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "db:generate": "prisma generate",
+    "db:migrate": "prisma migrate deploy && prisma generate",
+    "db:migrate:dev": "prisma migrate dev",
+    "db:seed": "prisma db seed",
+    "db:reset": "prisma migrate reset --force",
+    "db:check-drift": "dotenv -e .env -- sh -c 'prisma migrate diff --from-migrations prisma/migrations --to-schema-datamodel prisma/schema.prisma --shadow-database-url \"$SHADOW_DATABASE_URL\" --exit-code'",
+    "test:unit": "tsx --test \"src/**/*.test.ts\"",
+    "test:integration": "dotenv -e .env.test -- prisma migrate deploy && dotenv -e .env.test -- tsx --test --test-concurrency=1 \"test/**/*.test.ts\"",
+    "test": "pnpm test:unit && pnpm test:integration"
+  },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
+  },
+  "dependencies": {
+    "@nestjs/common": "^11.1.0",
+    "@nestjs/config": "^4.0.0",
+    "@nestjs/core": "^11.1.0",
+    "@nestjs/platform-express": "^11.1.0",
+    "@prisma/client": "^6.16.0",
+    "class-transformer": "^0.5.1",
+    "class-validator": "^0.14.1",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.1"
+  },
+  "devDependencies": {
+    "@nestjs/cli": "^11.0.0",
+    "@nestjs/schematics": "^11.0.0",
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.0.0",
+    "dotenv-cli": "^8.0.0",
+    "prisma": "^6.16.0",
+    "tsx": "^4.19.0",
+    "typescript": "~5.9.2"
+  }
+}

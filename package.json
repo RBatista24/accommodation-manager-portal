@@ -1,0 +1,32 @@
+{
+  "name": "accommodation-manager-portal",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Property management platform. Phase 1: Booking.com reservations for Carnot House.",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "setup:env": "node apps/api/scripts/setup-env.mjs",
+    "db:up": "docker compose up -d --wait",
+    "db:down": "docker compose down",
+    "db:migrate": "pnpm --filter @accommodation-manager-portal/api db:migrate",
+    "db:seed": "pnpm --filter @accommodation-manager-portal/api db:seed",
+    "db:reset": "pnpm --filter @accommodation-manager-portal/api db:reset",
+    "dev": "pnpm -r --parallel dev",
+    "build": "pnpm -r build",
+    "test": "pnpm --filter @accommodation-manager-portal/api test",
+    "test:unit": "pnpm --filter @accommodation-manager-portal/api test:unit",
+    "typecheck": "pnpm -r typecheck",
+    "dev:api": "pnpm --filter @accommodation-manager-portal/api dev",
+    "dev:web": "pnpm --filter @accommodation-manager-portal/web dev"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "@nestjs/core",
+      "@prisma/client",
+      "@prisma/engines",
+      "prisma"
+    ]
+  }
+}

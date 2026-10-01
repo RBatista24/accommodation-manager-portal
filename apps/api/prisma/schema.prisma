@@ -1,0 +1,223 @@
+// Phase 1 schema. Tables and columns use snake_case in PostgreSQL; the Prisma
+// client exposes them in camelCase.
+//
+// The reservation domain is source-agnostic: nothing on Reservation is specific
+// to Booking.com. Source-specific details live in SourceMapping (external ids)
+// and IcalFeed (how one kind of integration is configured).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum ReservationSource {
+  BOOKING
+  AIRBNB
+  DIRECT
+  OTHER
+}
+
+enum ReservationStatus {
+  CONFIRMED
+  CANCELLED
+}
+
+enum SyncStatus {
+  RUNNING
+  SUCCESS
+  PARTIAL
+  FAILED
+}
+
+model User {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String
+  email     String   @unique
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  auditLogs AuditLog[]
+
+  @@map("users")
+}
+
+model Property {
+  id          String   @id @default(uuid()) @db.Uuid
+  name        String
+  description String?
+  address     String?
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  units          Unit[]
+  reservations   Reservation[]
+  sourceMappings SourceMapping[]
+
+  @@map("properties")
+}
+
+model Unit {
+  id          String   @id @default(uuid()) @db.Uuid
+  propertyId  String   @map("property_id") @db.Uuid
+  name        String
+  description String?
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  property       Property        @relation(fields: [propertyId], references: [id], onDelete: Restrict)
+  reservations   Reservation[]
+  sourceMappings SourceMapping[]
+
+  @@unique([propertyId, name])
+  @@map("units")
+}
+
+model Reservation {
+  id         String            @id @default(uuid()) @db.Uuid
+  propertyId String            @map("property_id") @db.Uuid
+  // Nullable on purpose: an imported reservation whose unit cannot be resolved
+  // is kept and shown as "pending assignment", never assigned arbitrarily.
+  unitId     String?           @map("unit_id") @db.Uuid
+  source     ReservationSource
+  // Identifier in the external system (e.g. the Booking reservation id).
+  // Null only for sources without one (future direct reservations).
+  externalId String?           @map("external_id")
+
+  // The external property/unit the reservation came from. Kept so a mapping
+  // created later can resolve reservations that were imported unassigned.
+  externalPropertyRef  String? @map("external_property_ref")
+  externalUnitRef      String? @map("external_unit_ref")
+  // True once a person assigns the unit by hand; sync then leaves the unit alone.
+  unitAssignedManually Boolean @default(false) @map("unit_assigned_manually")
+  // Guest fields a person filled in by hand (guestName, guestEmail, guestPhone,
+  // numberOfGuests). Sync never overwrites these.
+  manualFields         String[] @default([]) @map("manual_fields")
+
+  guestName      String?           @map("guest_name")
+  guestEmail     String?           @map("guest_email")
+  guestPhone     String?           @map("guest_phone")
+  // Dates only, no time or timezone. check_in inclusive, check_out exclusive.
+  checkIn        DateTime          @map("check_in") @db.Date
+  checkOut       DateTime          @map("check_out") @db.Date
+  numberOfGuests Int?              @map("number_of_guests")
+  status         ReservationStatus @default(CONFIRMED)
+  notes          String?
+
+  // Billing details, filled in by hand (no source provides them).
+  // An empty billing name means "bill the guest" (guestName).
+  billingName    String? @map("billing_name")
+  billingNif     String? @map("billing_nif")
+  billingAddress String? @map("billing_address")
+
+  lastSyncedAt  DateTime? @map("last_synced_at")
+  lastSyncRunId String?   @map("last_sync_run_id") @db.Uuid
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  property    Property @relation(fields: [propertyId], references: [id], onDelete: Restrict)
+  unit        Unit?    @relation(fields: [unitId], references: [id], onDelete: Restrict)
+  lastSyncRun SyncRun? @relation(fields: [lastSyncRunId], references: [id], onDelete: SetNull)
+
+  // Idempotency: one local reservation per external reservation.
+  @@unique([source, externalId])
+  @@index([propertyId, checkIn])
+  @@index([unitId, checkIn])
+  @@index([checkIn])
+  @@index([checkOut])
+  @@index([status])
+  @@index([source, externalPropertyRef, externalUnitRef], map: "reservations_source_external_refs_idx")
+  @@map("reservations")
+}
+
+// Explicit link between an external property/room and a local Property/Unit.
+// unitId may be null: the external room is known but not yet linked to a unit.
+model SourceMapping {
+  id                 String            @id @default(uuid()) @db.Uuid
+  source             ReservationSource
+  externalPropertyId String            @map("external_property_id")
+  externalUnitId     String            @map("external_unit_id")
+  externalName       String?           @map("external_name")
+  propertyId         String            @map("property_id") @db.Uuid
+  unitId             String?           @map("unit_id") @db.Uuid
+  active             Boolean           @default(true)
+  createdAt          DateTime          @default(now()) @map("created_at")
+  updatedAt          DateTime          @updatedAt @map("updated_at")
+
+  property Property @relation(fields: [propertyId], references: [id], onDelete: Restrict)
+  unit     Unit?    @relation(fields: [unitId], references: [id], onDelete: Restrict)
+
+  @@unique([source, externalPropertyId, externalUnitId], map: "source_mappings_source_external_ids_key")
+  @@index([propertyId])
+  @@index([unitId])
+  @@map("source_mappings")
+}
+
+// One synchronization run of one source, for operational visibility.
+model SyncRun {
+  id             String            @id @default(uuid()) @db.Uuid
+  source         ReservationSource
+  status         SyncStatus        @default(RUNNING)
+  startedAt      DateTime          @default(now()) @map("started_at")
+  finishedAt     DateTime?         @map("finished_at")
+  fetchedCount   Int               @default(0) @map("fetched_count")
+  createdCount   Int               @default(0) @map("created_count")
+  updatedCount   Int               @default(0) @map("updated_count")
+  unchangedCount Int               @default(0) @map("unchanged_count")
+  cancelledCount Int               @default(0) @map("cancelled_count")
+  pendingCount   Int               @default(0) @map("pending_count")
+  errorCount     Int               @default(0) @map("error_count")
+  // Safe, user-facing summary. Technical details go to the logs.
+  errorMessage   String?           @map("error_message")
+  // Per-item problems: [{ externalId, message }]. Never contains secrets.
+  errorDetails   Json?             @map("error_details")
+  createdAt      DateTime          @default(now()) @map("created_at")
+
+  reservations Reservation[]
+
+  @@index([source, startedAt])
+  @@index([status])
+  @@map("sync_runs")
+}
+
+// Configuration for iCal-based integrations (Booking.com today; Airbnb also
+// exports iCal, so this is not Booking-specific). The URL is a secret.
+model IcalFeed {
+  id                 String            @id @default(uuid()) @db.Uuid
+  source             ReservationSource
+  name               String
+  url                String
+  externalPropertyId String            @map("external_property_id")
+  externalUnitId     String            @map("external_unit_id")
+  active             Boolean           @default(true)
+  lastFetchedAt      DateTime?         @map("last_fetched_at")
+  lastError          String?           @map("last_error")
+  createdAt          DateTime          @default(now()) @map("created_at")
+  updatedAt          DateTime          @updatedAt @map("updated_at")
+
+  @@unique([source, externalPropertyId, externalUnitId], map: "ical_feeds_source_external_ids_key")
+  @@map("ical_feeds")
+}
+
+model AuditLog {
+  id         String   @id @default(uuid()) @db.Uuid
+  timestamp  DateTime @default(now())
+  // Null for operations performed by the system (e.g. synchronization).
+  userId     String?  @map("user_id") @db.Uuid
+  action     String
+  entityType String   @map("entity_type")
+  entityId   String?  @map("entity_id")
+  metadata   Json?
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([entityType, entityId])
+  @@index([timestamp])
+  @@index([action])
+  @@map("audit_logs")
+}

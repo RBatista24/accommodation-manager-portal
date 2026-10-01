@@ -1,0 +1,16 @@
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+
+# Environment files hold secrets (database passwords, iCal feed URLs). Never commit them.
+.env
+.env.*
+!.env.example
+
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json
+npm-debug.log*
+pnpm-debug.log*
