@@ -4,8 +4,10 @@ import { isIsoDate, type IsoDate } from './dates';
 export interface ManualStayInput {
   checkIn: IsoDate;
   checkOut: IsoDate;
-  guestName: string;
+  /** Required for a guest stay; not used for blocked dates. */
+  guestName?: string | null;
   numberOfGuests?: number | null;
+  kind?: 'STAY' | 'BLOCK';
 }
 
 /** Plain-language problems with a manual stay; empty when valid. */
@@ -16,7 +18,9 @@ export function validateManualStay(input: ManualStayInput): string[] {
   if (isIsoDate(input.checkIn) && isIsoDate(input.checkOut) && input.checkOut <= input.checkIn) {
     problems.push('Check-out must be after check-in');
   }
-  if (!input.guestName || input.guestName.trim() === '') problems.push('Enter the guest name');
+  if ((input.kind ?? 'STAY') === 'STAY' && (!input.guestName || input.guestName.trim() === '')) {
+    problems.push('Enter the guest name');
+  }
   const g = input.numberOfGuests;
   if (g !== undefined && g !== null && (!Number.isInteger(g) || g < 1 || g > 100)) {
     problems.push('Number of guests must be between 1 and 100');

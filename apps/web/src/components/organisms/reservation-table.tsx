@@ -6,6 +6,7 @@ import { ReservationStatusBadge, SourceBadge } from '@/components/molecules/stat
 import { useReservationParam } from '@/hooks/use-reservation-param';
 import { formatStay, nightsLabel } from '@/lib/dates';
 import type { Reservation } from '@/lib/types';
+import { reservationTitle } from '@/lib/reservations';
 import { cn } from '@/lib/utils';
 
 /** Table on larger screens, stacked cards on phones. */
@@ -37,9 +38,9 @@ export function ReservationTable({ reservations }: { reservations: Reservation[]
                       onClick={(e) => e.stopPropagation()}
                       className={cn('font-medium hover:underline', cancelled && 'text-muted-foreground line-through')}
                     >
-                      {r.guestName ?? 'Guest name unavailable'}
+                      {reservationTitle(r)}
                     </Link>
-                    <div className="text-muted-foreground text-xs">{r.externalId}</div>
+                    <div className="text-muted-foreground text-xs">{r.kind === 'BLOCK' ? (r.notes ?? r.externalId) : r.externalId}</div>
                   </TableCell>
                   <TableCell>
                     {r.unitName ?? (
@@ -73,7 +74,7 @@ export function ReservationTable({ reservations }: { reservations: Reservation[]
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <div className={cn('truncate font-medium', r.status === 'CANCELLED' && 'text-muted-foreground line-through')}>
-                    {r.guestName ?? 'Guest name unavailable'}
+                    {reservationTitle(r)}
                   </div>
                   <div className="text-muted-foreground text-sm">{r.unitName ?? 'No unit assigned'}</div>
                 </div>

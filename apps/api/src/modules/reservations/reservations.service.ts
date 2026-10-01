@@ -3,7 +3,7 @@ import type { Prisma } from '@prisma/client';
 import { overlapsFor } from '../../domain/conflicts';
 import { fromIsoDate, isIsoDate, toIsoDate, type IsoDate } from '../../domain/dates';
 import { validateManualStay } from '../../domain/manual-reservation';
-import type { ReservationSource, ReservationStatus } from '../../domain/reservation';
+import type { ReservationKind, ReservationSource, ReservationStatus } from '../../domain/reservation';
 import { Clock } from '../../infrastructure/clock';
 import { PrismaService } from '../../infrastructure/prisma/prisma.service';
 import { AuditAction, AuditService } from '../audit/audit.service';
@@ -15,6 +15,7 @@ export interface ReservationFilters {
   unitId?: string;
   source?: ReservationSource;
   status?: ReservationStatus;
+  kind?: ReservationKind;
   /** Stays overlapping [from, to). */
   from?: IsoDate;
   to?: IsoDate;
@@ -45,13 +46,16 @@ export interface EditReservationInput {
   acceptConflicts?: boolean;
 }
 
-/** A reservation typed in by a person (source DIRECT). */
+/** A reservation typed in by a person (source DIRECT): a guest stay or blocked dates. */
 export interface CreateReservationInput {
   propertyId: string;
   unitId: string;
   checkIn: IsoDate;
   checkOut: IsoDate;
-  guestName: string;
+  /** STAY (default) or BLOCK. A block has no guest; `notes` holds the reason. */
+  kind?: ReservationKind;
+  /** Required for a guest stay. */
+  guestName?: string | null;
   guestEmail?: string | null;
   guestPhone?: string | null;
   numberOfGuests?: number | null;
@@ -122,6 +126,7 @@ export class ReservationsService {
       ...(filters.unassigned ? { unitId: null } : {}),
       ...(filters.source ? { source: filters.source } : {}),
       ...(filters.status ? { status: filters.status } : {}),
+      ...(filters.kind ? { kind: filters.kind } : {}),
       ...(filters.to ? { checkIn: { lt: fromIsoDate(filters.to) } } : {}),
       ...(filters.from ? { checkOut: { gt: fromIsoDate(filters.from) } } : {}),
       ...(q
@@ -242,7 +247,9 @@ export class ReservationsService {
     if (!property) throw new BadRequestException('Choose an existing property');
     if (!property.active) throw new BadRequestException('This property is deactivated');
     await this.assertUsableUnit(input.unitId, input.propertyId);
-    const details = normalizeDetails(input);
+    const kind: ReservationKind = input.kind ?? 'STAY';
+    // A block has no guest: only the reason (notes) is kept.
+    const details = kind === 'BLOCK' ? normalizeDetails({ notes: input.notes }) : normalizeDetails(input);
     const conflicts = await this.checkOverlaps(
       { unitId: input.unitId, checkIn: input.checkIn, checkOut: input.checkOut },
       input.acceptConflicts,
@@ -260,6 +267,7 @@ export class ReservationsService {
           checkIn: fromIsoDate(input.checkIn),
           checkOut: fromIsoDate(input.checkOut),
           status: 'CONFIRMED',
+          kind,
           guestName: details.guestName ?? null,
           guestEmail: details.guestEmail ?? null,
           guestPhone: details.guestPhone ?? null,
@@ -278,6 +286,7 @@ export class ReservationsService {
           userId,
           metadata: {
             source: 'DIRECT',
+            kind,
             unitId: input.unitId,
             checkIn: input.checkIn,
             checkOut: input.checkOut,
@@ -310,7 +319,7 @@ export class ReservationsService {
     for (const key of DETAIL_KEYS) {
       const value = next[key];
       if (value === undefined || value === reservation[key]) continue;
-      if (key === 'guestName' && value === null && reservation.source === 'DIRECT') {
+      if (key === 'guestName' && value === null && reservation.source === 'DIRECT' && reservation.kind === 'STAY') {
         throw new BadRequestException('Enter the guest name');
       }
       (data as Record<string, unknown>)[key] = value;
@@ -337,7 +346,7 @@ export class ReservationsService {
         );
       }
       if (reservation.status === 'CANCELLED') throw new BadRequestException('A cancelled reservation cannot be changed');
-      const problems = validateManualStay({ checkIn: stay.checkIn, checkOut: stay.checkOut, guestName: 'x' });
+      const problems = validateManualStay({ checkIn: stay.checkIn, checkOut: stay.checkOut, kind: 'BLOCK' });
       if (problems.length > 0) throw new BadRequestException(problems);
       if (!stay.unitId) throw new BadRequestException('Choose a unit');
       if (stay.unitId !== before.unitId) await this.assertUsableUnit(stay.unitId, reservation.propertyId);
@@ -400,6 +409,34 @@ export class ReservationsService {
           entityId: id,
           userId,
           metadata: { source: 'DIRECT', previousStatus: 'CONFIRMED' },
+        },
+        tx,
+      );
+    });
+    return this.get(id);
+  }
+
+  /**
+   * Turns a reservation into blocked dates or back into a guest stay — e.g. a
+   * Booking "CLOSED - Not available" entry that is really a closure. Allowed
+   * for any source; synchronization never changes `kind` afterwards.
+   */
+  async setKind(id: string, kind: ReservationKind, userId: string) {
+    const reservation = await this.prisma.reservation.findUnique({ where: { id } });
+    if (!reservation) throw new NotFoundException('Reservation not found');
+    if (reservation.kind === kind) return this.get(id);
+    if (kind === 'STAY' && reservation.source === 'DIRECT' && !reservation.guestName) {
+      throw new BadRequestException('Enter the guest name first ("Edit details"), then mark it as a guest stay');
+    }
+    await this.prisma.$transaction(async (tx) => {
+      await tx.reservation.update({ where: { id }, data: { kind } });
+      await this.audit.record(
+        {
+          action: AuditAction.ReservationKindChanged,
+          entityType: 'Reservation',
+          entityId: id,
+          userId,
+          metadata: { from: reservation.kind, to: kind },
         },
         tx,
       );

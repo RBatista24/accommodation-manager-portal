@@ -1,5 +1,6 @@
 import type {
   CalendarData,
+  CalendarExport,
   Dashboard,
   IcalFeed,
   IntegrationStatus,
@@ -8,6 +9,7 @@ import type {
   PropertyDetail,
   PropertyListItem,
   ReservationDetail,
+  ReservationKind,
   ReservationList,
   SyncRun,
   Unit,
@@ -74,6 +76,7 @@ export interface ReservationFilters extends Query {
   unitId?: string;
   source?: string;
   status?: string;
+  kind?: string;
   from?: string;
   to?: string;
   q?: string;
@@ -106,7 +109,9 @@ export interface NewReservation {
   unitId: string;
   checkIn: string;
   checkOut: string;
-  guestName: string;
+  /** STAY (default) or BLOCK; a block has no guest and uses `notes` as the reason. */
+  kind?: ReservationKind;
+  guestName?: string;
   guestEmail?: string;
   guestPhone?: string;
   numberOfGuests?: number | null;
@@ -141,6 +146,10 @@ export const api = {
   reservations: (filters: ReservationFilters) => get<ReservationList>('/reservations', filters),
   reservation: (id: string) => get<ReservationDetail>(`/reservations/${id}`),
   createReservation: (body: NewReservation) => send<ReservationDetail>('POST', '/reservations', body),
+  setReservationKind: (id: string, kind: ReservationKind) => send<ReservationDetail>('POST', `/reservations/${id}/kind`, { kind }),
+  calendarExports: () => get<CalendarExport[]>('/calendar-exports'),
+  enableCalendarExport: (unitId: string) => send<CalendarExport>('POST', `/calendar-exports/${unitId}`),
+  disableCalendarExport: (unitId: string) => request<CalendarExport>(`/calendar-exports/${unitId}`, { method: 'DELETE' }),
   cancelReservation: (id: string) => send<ReservationDetail>('POST', `/reservations/${id}/cancel`),
   editReservation: (id: string, body: ReservationEdit) => send<ReservationDetail>('PATCH', `/reservations/${id}`, body),
   assignUnit: (id: string, unitId: string) => send<ReservationDetail>('POST', `/reservations/${id}/assign-unit`, { unitId }),

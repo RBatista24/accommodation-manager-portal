@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { CalendarClockIcon, CircleAlertIcon, PencilIcon, TriangleAlertIcon, CircleXIcon } from 'lucide-react';
+import { BanIcon, CalendarClockIcon, CircleAlertIcon, PencilIcon, TriangleAlertIcon, CircleXIcon, UserRoundIcon } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/atoms/alert';
 import { Button } from '@/components/atoms/button';
 import { NativeSelect } from '@/components/atoms/native-select';
@@ -12,7 +12,8 @@ import { QueryState } from '@/components/molecules/query-state';
 import { ReservationStatusBadge, SourceBadge, sourceLabel } from '@/components/molecules/status-badges';
 import { ReservationEditForm } from '@/components/organisms/reservation-edit-form';
 import { StayEditForm } from '@/components/organisms/stay-edit-form';
-import { useAssignUnit, useCancelReservation, useReservation } from '@/hooks/queries';
+import { useAssignUnit, useCancelReservation, useReservation, useSetReservationKind } from '@/hooks/queries';
+import { reservationTitle } from '@/lib/reservations';
 import { useReservationParam } from '@/hooks/use-reservation-param';
 import { errorMessage } from '@/lib/api';
 import { formatMedium, formatStay, formatTimestamp, nightsLabel } from '@/lib/dates';
@@ -51,12 +52,15 @@ function ReservationDetailBody({ reservation: r }: { reservation: ReservationDet
   // Reservations created in the app can be moved and cancelled here; imported ones follow their source.
   const isDirect = r.source === 'DIRECT';
   const canChangeStay = isDirect && r.status === 'CONFIRMED';
+  const isBlock = r.kind === 'BLOCK';
+  const setKind = useSetReservationKind(r.id);
   return (
     <>
       <SheetHeader className="gap-2 border-b pr-12">
-        <SheetTitle className="text-lg">{r.guestName ?? 'Guest name unavailable'}</SheetTitle>
+        <SheetTitle className="text-lg">{reservationTitle(r)}</SheetTitle>
         <SheetDescription>
           {formatStay(r.checkIn, r.checkOut)} · {nightsLabel(r.nights)}
+          {isBlock && r.notes ? ` · ${r.notes}` : ''}
         </SheetDescription>
         <div className="flex flex-wrap gap-2">
           <ReservationStatusBadge reservation={{ ...r, hasConflict: r.conflicts.length > 0 }} />
@@ -75,7 +79,7 @@ function ReservationDetailBody({ reservation: r }: { reservation: ReservationDet
               <AlertTitle>Reservation conflict</AlertTitle>
               <AlertDescription>
                 <p>
-                  {c.unitName} is also booked by {other?.guestName ?? 'another guest'} (
+                  {c.unitName} is also {other?.kind === 'BLOCK' ? 'blocked' : `booked by ${other?.guestName ?? 'another guest'}`} (
                   {other && formatStay(other.checkIn, other.checkOut)}). The stays overlap from {formatStay(c.overlapFrom, c.overlapTo)}.
                 </p>
               </AlertDescription>
@@ -85,7 +89,7 @@ function ReservationDetailBody({ reservation: r }: { reservation: ReservationDet
 
         <section>
           <div className="mb-3 flex items-center justify-between">
-            <h3 className="text-sm font-semibold">Guest</h3>
+            <h3 className="text-sm font-semibold">{isBlock ? 'Blocked dates' : 'Guest'}</h3>
             {!editing && (
               <Button variant="outline" size="sm" onClick={() => setEditing(true)}>
                 <PencilIcon /> Edit details
@@ -96,17 +100,21 @@ function ReservationDetailBody({ reservation: r }: { reservation: ReservationDet
             <ReservationEditForm reservation={r} onDone={() => setEditing(false)} />
           ) : (
             <DetailList
-              items={[
-                ['Name', r.guestName],
-                ['Email', r.guestEmail],
-                ['Phone', r.guestPhone],
-                ['Guests', r.numberOfGuests],
-                ['Notes', r.notes],
-              ]}
+              items={
+                isBlock
+                  ? [['Reason', r.notes]]
+                  : [
+                      ['Name', r.guestName],
+                      ['Email', r.guestEmail],
+                      ['Phone', r.guestPhone],
+                      ['Guests', r.numberOfGuests],
+                      ['Notes', r.notes],
+                    ]
+              }
             />
           )}
         </section>
-        {!editing && (
+        {!editing && !isBlock && (
           <>
             <Separator />
             <section>
@@ -159,8 +167,32 @@ function ReservationDetailBody({ reservation: r }: { reservation: ReservationDet
                 ['Check-in', formatMedium(r.checkIn)],
                 ['Check-out', formatMedium(r.checkOut)],
                 ['Duration', nightsLabel(r.nights)],
+                [
+                  'Type',
+                  <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                    {isBlock ? 'Blocked dates' : 'Guest stay'}
+                    {r.status === 'CONFIRMED' && (
+                      <Button
+                        variant="link"
+                        size="sm"
+                        className="h-auto p-0"
+                        disabled={setKind.isPending}
+                        onClick={() => setKind.mutate(isBlock ? 'STAY' : 'BLOCK')}
+                      >
+                        {isBlock ? <UserRoundIcon /> : <BanIcon />}
+                        {isBlock ? 'Mark as guest stay' : 'Mark as blocked dates'}
+                      </Button>
+                    )}
+                  </span>,
+                ],
               ]}
             />
+          )}
+          {setKind.isError && <p className="text-destructive mt-2 text-sm">{errorMessage(setKind.error)}</p>}
+          {!isDirect && !isBlock && !r.guestName && r.status === 'CONFIRMED' && (
+            <p className="text-muted-foreground mt-2 text-xs">
+              Booking shows both reservations and closed dates as "Not available". If this is a closure, mark it as blocked dates.
+            </p>
           )}
         </section>
         <Separator />
@@ -181,9 +213,11 @@ function ReservationDetailBody({ reservation: r }: { reservation: ReservationDet
           <>
             <Separator />
             <section className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-              <p className="text-muted-foreground text-sm">Guest no longer coming? The reservation is kept as cancelled.</p>
+              <p className="text-muted-foreground text-sm">
+                {isBlock ? 'Open these dates again? The block is kept in the history as cancelled.' : 'Guest no longer coming? The reservation is kept as cancelled.'}
+              </p>
               <Button variant="outline" className="text-destructive" onClick={() => setConfirmCancel(true)}>
-                <CircleXIcon /> Cancel reservation
+                <CircleXIcon /> {isBlock ? 'Remove block' : 'Cancel reservation'}
               </Button>
             </section>
             <ConfirmDialog
@@ -192,9 +226,9 @@ function ReservationDetailBody({ reservation: r }: { reservation: ReservationDet
                 setConfirmCancel(o);
                 if (!o) cancel.reset();
               }}
-              title="Cancel this reservation?"
-              description={`${r.guestName ?? 'This guest'} · ${formatStay(r.checkIn, r.checkOut)}. It stays in the history as cancelled and frees the unit. This cannot be undone.`}
-              confirmLabel="Cancel reservation"
+              title={isBlock ? 'Remove these blocked dates?' : 'Cancel this reservation?'}
+              description={`${isBlock ? 'Blocked dates' : (r.guestName ?? 'This guest')} · ${formatStay(r.checkIn, r.checkOut)}. It stays in the history as cancelled and frees the unit. This cannot be undone.`}
+              confirmLabel={isBlock ? 'Remove block' : 'Cancel reservation'}
               destructive
               pending={cancel.isPending}
               error={cancel.isError ? errorMessage(cancel.error) : null}
@@ -267,6 +301,7 @@ const BY_PERSON: Record<string, string> = {
   RESERVATION_CANCELLED: 'Cancelled',
   RESERVATION_UNIT_ASSIGNED: 'Unit assigned by hand',
   RESERVATION_EDITED: 'Details edited',
+  RESERVATION_KIND_CHANGED: 'Type changed',
 };
 
 function describeAction(action: string, byPerson: boolean): string {

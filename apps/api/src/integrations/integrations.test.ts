@@ -142,3 +142,26 @@ describe('Booking demo adapter', () => {
     assert.equal(new Set(r.reservations.map((x) => x.externalId)).size, r.reservations.length, 'ids are unique');
   });
 });
+
+describe('round trip with our own calendar export', () => {
+  it('the iCal reader understands the calendar we publish for Booking', async () => {
+    const { buildUnitCalendar } = await import('../domain/calendar-export');
+    const text = buildUnitCalendar({
+      calendarName: 'Carnot House · Quarto Garça',
+      stays: [
+        { id: 'a', source: 'DIRECT', status: 'CONFIRMED', kind: 'STAY', checkIn: '2026-10-10', checkOut: '2026-10-12' },
+        { id: 'b', source: 'DIRECT', status: 'CONFIRMED', kind: 'BLOCK', checkIn: '2026-10-20', checkOut: '2026-10-21' },
+      ],
+      now: new Date('2026-10-01T12:00:00Z'),
+    });
+    const parsed = parseIcal(text);
+    assert.equal(parsed.isCalendar, true);
+    assert.deepEqual(
+      parsed.events.map((e) => [e.uid, e.start, e.end, e.summary]),
+      [
+        ['a@accommodation-manager-portal', '2026-10-10', '2026-10-12', 'Not available'],
+        ['b@accommodation-manager-portal', '2026-10-20', '2026-10-21', 'Not available'],
+      ],
+    );
+  });
+});

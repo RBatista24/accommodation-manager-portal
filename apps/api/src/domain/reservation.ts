@@ -10,6 +10,10 @@ export type ReservationSource = (typeof RESERVATION_SOURCES)[number];
 export const RESERVATION_STATUSES = ['CONFIRMED', 'CANCELLED'] as const;
 export type ReservationStatus = (typeof RESERVATION_STATUSES)[number];
 
+/** STAY = a guest stays; BLOCK = the unit is closed. Only people set it; sync never does. */
+export const RESERVATION_KINDS = ['STAY', 'BLOCK'] as const;
+export type ReservationKind = (typeof RESERVATION_KINDS)[number];
+
 /**
  * A reservation as delivered by ANY integration adapter, already translated
  * out of the provider's own format. This is the only shape the domain and the

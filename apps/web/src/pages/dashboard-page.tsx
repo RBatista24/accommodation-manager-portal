@@ -52,7 +52,7 @@ export function DashboardPage() {
                     <span className="text-muted-foreground text-lg font-normal"> / {d.occupancy.totalUnits}</span>
                   </>
                 }
-                hint={`${d.occupancy.availableUnits} available tonight`}
+                hint={`${d.occupancy.availableUnits} available tonight${d.occupancy.blockedUnits ? ` · ${d.occupancy.blockedUnits} blocked` : ''}`}
                 icon={<BedDoubleIcon />}
               />
             </div>
@@ -150,6 +150,10 @@ function UnitsNow({ dashboard: d }: { dashboard: Dashboard }) {
                     {r.guestName} · until {formatShort(r.checkOut)}
                   </div>
                 </>
+              ) : u.blocked ? (
+                <Badge variant="outline" className="mt-2">
+                  Blocked
+                </Badge>
               ) : (
                 <Badge variant="secondary" className="mt-2">
                   Available

@@ -15,6 +15,12 @@ export interface AppConfig {
   corsOrigins: string[];
   bookingMode: BookingIntegrationMode;
   defaultUser: { name: string; email: string };
+  /**
+   * Address at which this API is reachable from the internet (no trailing slash),
+   * used to build the calendar-export links Booking.com fetches.
+   * Default: http://localhost:<PORT> (fine for testing, not reachable by Booking).
+   */
+  publicBaseUrl: string;
 }
 
 export function loadConfig(env: Record<string, string | undefined>): AppConfig {
@@ -56,8 +62,13 @@ export function loadConfig(env: Record<string, string | undefined>): AppConfig {
     email: env.DEFAULT_USER_EMAIL?.trim() || 'owner@example.com',
   };
 
+  const publicBaseUrl = (env.PUBLIC_BASE_URL?.trim() || `http://localhost:${port}`).replace(/\/+$/, '');
+  if (!/^https?:\/\/[^/\s]+(\/[^\s]*)?$/.test(publicBaseUrl)) {
+    problems.push('PUBLIC_BASE_URL must be an http(s) address such as https://calendars.example.com');
+  }
+
   if (problems.length > 0) {
     throw new Error(`Invalid configuration:\n  - ${problems.join('\n  - ')}`);
   }
-  return { nodeEnv, port, databaseUrl, timezone, corsOrigins, bookingMode, defaultUser };
+  return { nodeEnv, port, databaseUrl, timezone, corsOrigins, bookingMode, defaultUser, publicBaseUrl };
 }

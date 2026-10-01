@@ -9,8 +9,10 @@ import { FormField } from '@/components/molecules/form-field';
 import { OverlapWarning } from '@/components/molecules/overlap-warning';
 import { useCreateReservation, useProperties } from '@/hooks/queries';
 import { useReservationParam } from '@/hooks/use-reservation-param';
-import { errorMessage, overlapsOf } from '@/lib/api';
+import { errorMessage, overlapsOf, type NewReservation } from '@/lib/api';
 import { addDays, daysBetween, isoValid, nightsLabel, todayLocal } from '@/lib/dates';
+import type { ReservationKind } from '@/lib/types';
+import { cn } from '@/lib/utils';
 
 /** "New reservation": a stay typed in by hand (source Direct). */
 export function ReservationFormDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
@@ -20,6 +22,7 @@ export function ReservationFormDialog({ open, onOpenChange }: { open: boolean; o
 
   const empty = React.useMemo(
     () => ({
+      kind: 'STAY' as ReservationKind,
       propertyId: '',
       unitId: '',
       checkIn: todayLocal(),
@@ -67,8 +70,8 @@ export function ReservationFormDialog({ open, onOpenChange }: { open: boolean; o
     unitId: !f.unitId ? 'Choose a unit' : null,
     checkIn: !isoValid(f.checkIn) ? 'Choose a date' : null,
     checkOut: !isoValid(f.checkOut) ? 'Choose a date' : datesValid && nights < 1 ? 'Must be after check-in' : null,
-    guestName: !f.guestName.trim() ? 'Enter the guest name' : null,
-    guests: f.guests && (!/^\d+$/.test(f.guests) || +f.guests < 1 || +f.guests > 100) ? 'Between 1 and 100' : null,
+    guestName: f.kind === 'STAY' && !f.guestName.trim() ? 'Enter the guest name' : null,
+    guests: f.kind === 'STAY' && f.guests && (!/^\d+$/.test(f.guests) || +f.guests < 1 || +f.guests > 100) ? 'Between 1 and 100' : null,
   };
   const invalid = Object.values(errors).some(Boolean);
   const overlaps = overlapsOf(create.error);
@@ -76,29 +79,27 @@ export function ReservationFormDialog({ open, onOpenChange }: { open: boolean; o
   function submit(acceptConflicts: boolean) {
     setTouched(true);
     if (invalid) return;
-    create.mutate(
-      {
-        propertyId,
-        unitId: f.unitId,
-        checkIn: f.checkIn,
-        checkOut: f.checkOut,
-        guestName: f.guestName.trim(),
-        guestEmail: f.guestEmail,
-        guestPhone: f.guestPhone,
-        numberOfGuests: f.guests ? Number(f.guests) : null,
-        notes: f.notes,
-        billingName: f.billingName,
-        billingNif: f.billingNif,
-        billingAddress: f.billingAddress,
-        acceptConflicts,
+    const stay = { propertyId, unitId: f.unitId, checkIn: f.checkIn, checkOut: f.checkOut, notes: f.notes, acceptConflicts };
+    const body: NewReservation =
+      f.kind === 'BLOCK'
+        ? { ...stay, kind: 'BLOCK' }
+        : {
+            ...stay,
+            kind: 'STAY',
+            guestName: f.guestName.trim(),
+            guestEmail: f.guestEmail,
+            guestPhone: f.guestPhone,
+            numberOfGuests: f.guests ? Number(f.guests) : null,
+            billingName: f.billingName,
+            billingNif: f.billingNif,
+            billingAddress: f.billingAddress,
+          };
+    create.mutate(body, {
+      onSuccess: (r) => {
+        onOpenChange(false);
+        openReservation(r.id);
       },
-      {
-        onSuccess: (r) => {
-          onOpenChange(false);
-          openReservation(r.id);
-        },
-      },
-    );
+    });
   }
 
   const err = (k: keyof typeof errors) => (touched ? errors[k] : null);
@@ -116,8 +117,35 @@ export function ReservationFormDialog({ open, onOpenChange }: { open: boolean; o
         >
           <DialogHeader>
             <DialogTitle>New reservation</DialogTitle>
-            <DialogDescription>A stay booked directly with you, not through Booking.com.</DialogDescription>
+            <DialogDescription>
+              {f.kind === 'STAY'
+                ? 'A stay booked directly with you, not through Booking.com.'
+                : 'Close a unit for some nights — your own use, maintenance, anything without a guest.'}
+            </DialogDescription>
           </DialogHeader>
+
+          <div role="radiogroup" aria-label="Type" className="bg-muted grid grid-cols-2 gap-1 rounded-lg p-1">
+            {(
+              [
+                ['STAY', 'Guest stay'],
+                ['BLOCK', 'Blocked dates'],
+              ] as const
+            ).map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                role="radio"
+                aria-checked={f.kind === value}
+                onClick={() => setF((p) => ({ ...p, kind: value }))}
+                className={cn(
+                  'rounded-md px-3 py-1.5 text-sm font-medium transition-colors focus-visible:ring-[3px] focus-visible:outline-none',
+                  f.kind === value ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground',
+                )}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
 
           <div className="grid gap-4 sm:grid-cols-2">
             {activeProperties.length > 1 && (
@@ -161,6 +189,8 @@ export function ReservationFormDialog({ open, onOpenChange }: { open: boolean; o
             </FormField>
           </div>
 
+          {f.kind === 'STAY' && (
+            <>
           <FormField id="new-guest" label="Guest name" error={err('guestName')}>
             <Input value={f.guestName} onChange={set('guestName')} maxLength={200} autoComplete="off" />
           </FormField>
@@ -175,10 +205,13 @@ export function ReservationFormDialog({ open, onOpenChange }: { open: boolean; o
               <Input type="number" min={1} max={100} value={f.guests} onChange={set('guests')} />
             </FormField>
           </div>
-          <FormField id="new-notes" label="Notes">
+            </>
+          )}
+          <FormField id="new-notes" label={f.kind === 'BLOCK' ? 'Reason (optional)' : 'Notes'}>
             <Textarea value={f.notes} onChange={set('notes')} rows={2} maxLength={4000} />
           </FormField>
 
+          {f.kind === 'STAY' && (
           <div role="group" aria-labelledby="new-billing" className="grid gap-4 border-t pt-4">
             <h3 id="new-billing" className="text-sm font-semibold">
               Billing <span className="text-muted-foreground font-normal">(optional)</span>
@@ -195,6 +228,7 @@ export function ReservationFormDialog({ open, onOpenChange }: { open: boolean; o
               <Textarea value={f.billingAddress} onChange={set('billingAddress')} rows={2} maxLength={500} />
             </FormField>
           </div>
+          )}
 
           {overlaps ? (
             <OverlapWarning overlaps={overlaps} />
@@ -212,7 +246,7 @@ export function ReservationFormDialog({ open, onOpenChange }: { open: boolean; o
               </Button>
             ) : (
               <Button type="submit" disabled={create.isPending}>
-                {create.isPending && <Spinner />} Create reservation
+                {create.isPending && <Spinner />} {f.kind === 'STAY' ? 'Create reservation' : 'Block dates'}
               </Button>
             )}
           </DialogFooter>

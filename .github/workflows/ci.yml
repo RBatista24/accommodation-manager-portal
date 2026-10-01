@@ -1,0 +1,77 @@
+# Runs on every push to main and on every pull request.
+# Free for public repositories. Uses no secrets: the database is a throwaway
+# PostgreSQL service container with local-only credentials.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    name: Typecheck, tests and build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: amp
+          POSTGRES_PASSWORD: amp
+          POSTGRES_DB: amp_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U amp -d amp_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      # Never a real database: the integration tests wipe it.
+      DATABASE_URL: postgresql://amp:amp@localhost:5432/amp_test?schema=public
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.22.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Test environment file
+        working-directory: apps/api
+        run: |
+          cat > .env.test <<'ENV'
+          NODE_ENV=test
+          DATABASE_URL=postgresql://amp:amp@localhost:5432/amp_test?schema=public
+          APP_TIMEZONE=Europe/Lisbon
+          BOOKING_INTEGRATION_MODE=mock
+          DEFAULT_USER_NAME=Test Owner
+          DEFAULT_USER_EMAIL=test-owner@example.com
+          ENV
+
+      - name: Typecheck (api + web)
+        run: pnpm typecheck
+
+      - name: Unit tests
+        run: pnpm test:unit
+
+      - name: Integration tests (PostgreSQL)
+        run: pnpm --filter @accommodation-manager-portal/api test:integration
+
+      - name: Build (api + web)
+        run: pnpm build

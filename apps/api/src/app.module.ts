@@ -4,6 +4,8 @@ import { APP_CONFIG, loadConfig } from './config/app-config';
 import { Clock, SystemClock } from './infrastructure/clock';
 import { PrismaService } from './infrastructure/prisma/prisma.service';
 import { AuditService } from './modules/audit/audit.service';
+import { CalendarExportFileController, CalendarExportsController } from './modules/calendar-export/calendar-export.controller';
+import { CalendarExportService } from './modules/calendar-export/calendar-export.service';
 import { CalendarController } from './modules/calendar/calendar.controller';
 import { CalendarService } from './modules/calendar/calendar.service';
 import { DashboardController } from './modules/dashboard/dashboard.controller';
@@ -76,6 +78,9 @@ export class MappingsModule {}
 })
 export class IntegrationsModule {}
 
+@Module({ controllers: [CalendarExportsController, CalendarExportFileController], providers: [CalendarExportService] })
+export class CalendarExportModule {}
+
 @Module({
   imports: [
     CoreModule,
@@ -85,6 +90,7 @@ export class IntegrationsModule {}
     DashboardModule,
     MappingsModule,
     IntegrationsModule,
+    CalendarExportModule,
   ],
   controllers: [HealthController],
 })

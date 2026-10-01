@@ -13,7 +13,7 @@ import { useProperties, useReservations } from '@/hooks/queries';
 import type { ReservationFilters } from '@/lib/api';
 
 const PAGE_SIZE = 25;
-const FILTER_KEYS = ['q', 'propertyId', 'unitId', 'source', 'status', 'from', 'to', 'unassigned', 'conflicts'] as const;
+const FILTER_KEYS = ['q', 'propertyId', 'unitId', 'source', 'status', 'kind', 'from', 'to', 'unassigned', 'conflicts'] as const;
 
 export function ReservationsPage() {
   const [params, setParams] = useSearchParams();
@@ -27,6 +27,7 @@ export function ReservationsPage() {
     unitId: params.get('unitId') ?? undefined,
     source: params.get('source') ?? undefined,
     status: params.get('status') ?? undefined,
+    kind: params.get('kind') ?? undefined,
     from: params.get('from') ?? undefined,
     to: params.get('to') ?? undefined,
     unassigned: params.get('unassigned') === 'true' || undefined,
@@ -58,7 +59,15 @@ export function ReservationsPage() {
     .filter((p) => !filters.propertyId || p.id === filters.propertyId)
     .flatMap((p) => p.units.map((u) => ({ ...u, label: (properties.data?.length ?? 0) > 1 ? `${p.name} · ${u.name}` : u.name })));
   const hasFilters = FILTER_KEYS.some((k) => params.get(k));
-  const flag = filters.unassigned ? 'unassigned' : filters.conflicts ? 'conflicts' : '';
+  const flag = filters.unassigned
+    ? 'unassigned'
+    : filters.conflicts
+      ? 'conflicts'
+      : filters.kind === 'STAY'
+        ? 'stays'
+        : filters.kind === 'BLOCK'
+          ? 'blocks'
+          : '';
 
   return (
     <PageLayout
@@ -107,21 +116,28 @@ export function ReservationsPage() {
         <NativeSelect className="bg-card rounded-md" aria-label="Source" value={filters.source ?? ''} onChange={(e) => set('source', e.target.value || null)}>
           <option value="">All sources</option>
           <option value="BOOKING">Booking.com</option>
+          <option value="DIRECT">Direct</option>
         </NativeSelect>
         <NativeSelect
           className="bg-card rounded-md"
-          aria-label="Needs attention"
+          aria-label="Show"
           value={flag}
           onChange={(e) => {
             const p = new URLSearchParams(params);
             p.delete('unassigned');
             p.delete('conflicts');
+            p.delete('kind');
             p.delete('page');
-            if (e.target.value) p.set(e.target.value, 'true');
+            const v = e.target.value;
+            if (v === 'stays') p.set('kind', 'STAY');
+            else if (v === 'blocks') p.set('kind', 'BLOCK');
+            else if (v) p.set(v, 'true');
             setParams(p, { replace: true });
           }}
         >
           <option value="">Everything</option>
+          <option value="stays">Guest stays</option>
+          <option value="blocks">Blocked dates</option>
           <option value="unassigned">Pending assignment</option>
           <option value="conflicts">Conflicts</option>
         </NativeSelect>
