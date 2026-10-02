@@ -34,11 +34,11 @@ describe('editing a reservation', () => {
     const service = ctx.reservations;
     const edited = await service.edit(
       row.id,
-      { guestName: ' Maria Costa ', guestEmail: 'maria@example.test', numberOfGuests: 2, notes: 'Late arrival' },
+      { guestName: ' Maria Costa ', guestEmail: 'maria@example.test', numberOfGuests: 3, notes: 'Late arrival' },
       userId,
     );
     assert.equal(edited.guestName, 'Maria Costa');
-    assert.equal(edited.numberOfGuests, 2);
+    assert.equal(edited.numberOfGuests, 3); // Booking sent 2: a real change, so it is protected
     assert.equal(property.id, edited.propertyId);
 
     await ctx.sync.run(adapter('CLOSED'));
