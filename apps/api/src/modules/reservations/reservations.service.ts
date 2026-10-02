@@ -70,6 +70,17 @@ const DETAIL_KEYS = ['guestName', 'guestEmail', 'guestPhone', 'numberOfGuests', 
 type DetailKey = (typeof DETAIL_KEYS)[number];
 type Details = { [K in DetailKey]?: K extends 'numberOfGuests' ? number | null : string | null };
 
+/**
+ * 400 for a list of input problems. The response body keeps the list (the web
+ * shows each line); the error's own message joins them so logs and callers
+ * see the actual reason instead of "Bad Request Exception".
+ */
+function invalidInput(problems: string[]): BadRequestException {
+  const error = new BadRequestException(problems);
+  error.message = problems.join(' ');
+  return error;
+}
+
 const clean = (v: string | null | undefined) => (v === undefined ? undefined : v === null || v.trim() === '' ? null : v.trim());
 
 /** Trims text, turns empty into null, normalises the NIF/VAT number and validates. */
@@ -242,7 +253,7 @@ export class ReservationsService {
    */
   async create(input: CreateReservationInput, userId: string) {
     const problems = validateManualStay(input);
-    if (problems.length > 0) throw new BadRequestException(problems);
+    if (problems.length > 0) throw invalidInput(problems);
     const property = await this.prisma.property.findUnique({ where: { id: input.propertyId } });
     if (!property) throw new BadRequestException('Choose an existing property');
     if (!property.active) throw new BadRequestException('This property is deactivated');
@@ -347,7 +358,7 @@ export class ReservationsService {
       }
       if (reservation.status === 'CANCELLED') throw new BadRequestException('A cancelled reservation cannot be changed');
       const problems = validateManualStay({ checkIn: stay.checkIn, checkOut: stay.checkOut, kind: 'BLOCK' });
-      if (problems.length > 0) throw new BadRequestException(problems);
+      if (problems.length > 0) throw invalidInput(problems);
       if (!stay.unitId) throw new BadRequestException('Choose a unit');
       if (stay.unitId !== before.unitId) await this.assertUsableUnit(stay.unitId, reservation.propertyId);
       conflicts = await this.checkOverlaps({ id, ...stay, unitId: stay.unitId }, input.acceptConflicts);
